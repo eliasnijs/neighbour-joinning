@@ -4,13 +4,13 @@ import numpy as np
 class DistanceMatrix:
 
     def __init__(self, data, **kwargs) -> None:
-        dim = len(data)
-        if dim < 1:
+        N = len(data)
+        if N < 2:
             raise ValueError('invalid distance matrix')
-        for i in range(dim):
+        for i in range(N):
             if data[i][i] != 0:
                 raise ValueError('invalid distance matrix')
-        self.data = np.array(data, dtype=np.int16, **kwargs)
+        self.data = np.array(data, **kwargs)
 
     def savetxt(self, filename: str, **kwargs) -> None:
         np.savetxt(filename, self.data, **kwargs)
@@ -18,12 +18,57 @@ class DistanceMatrix:
     def limb_length(self, j):
         result = np.inf
         data = self.data
-        for i in range(len(data)):
-            for k in range(len(data)):
-                if i == j or k == j:
+        for i, _ in enumerate(data):
+            for k, _ in enumerate(data):
+                if j in (i, k):
                     continue
                 result = min((data[i][j] + data[j][k] - data[i][k]) / 2, result)
         return result
+
+    def neighbour_joining(self):
+
+        # NOTE(Elias):
+        # d:    distance matrix
+        # N:    length of the distance matrix
+        # ids:  node id's of the rows/columns of d
+        # e:    constructed edges
+        d = self.data.copy()
+        N = len(d)
+        ids = np.array(range(N), dtype=np.int8)
+        e = []
+
+        for N_ in range(N, 2, -1):
+            r = np.sum(d, axis=0)
+            M = d.copy()
+            for i in range(1, N_):
+                for j in range(0, i):
+                    M[i, j] -= (r[i] + r[j]) / (N_ - 2)
+
+            # NOTE(Elias): s = (row, column) of the element in M with the lowest value
+            s = np.unravel_index(np.argmin(M), M.shape)
+
+            id_ = N + (N - N_)
+            w1 = d[s] / 2 + (r[s[1]] - r[s[0]]) / (2 * (N_ - 2))
+            w2 = d[s] - w1
+            e.append((ids[s[0]], id_, w2))
+            e.append((ids[s[1]], id_, w1))
+
+            # NOTE(Elias): update data
+            loss = d[s[0], s[1]]
+            for i in range(N_):
+                d[i, s[1]] = (d[s[1], i] + d[i, s[0]] - loss) / 2
+                d[s[1], i] = (d[s[1], i] + d[i, s[0]] - loss) / 2
+            d = np.delete(d, s[0], 0)
+            d = np.delete(d, s[0], 1)
+
+            # NOTE(Elias): update id's
+            ids[s[1]] = id_
+            ids = np.delete(ids, s[0], 0)
+
+        # NOTE(Elias): connect the final 2 elements
+        e.append((ids[0], ids[1], d[0][1]))
+
+        return UnrootedTree(*e)
 
     def __str__(self) -> str:
         return str(self.data.tolist())
@@ -57,13 +102,11 @@ class UnrootedTree:
             return path, w
         if marked[pos]:
             return None
-
         marked[pos] = True
         for n_next, w_next in self.graph[pos]:
             solution = self.__path(n_next, goal, path + [n_next], w + w_next, marked)
             if solution is not None:
                 return solution
-
         return None
 
     def path(self, pos, goal):
@@ -72,7 +115,6 @@ class UnrootedTree:
 
     def distance_matrix(self):
         leaves = dict(filter(lambda pair: len(pair[1]) == 1, self.graph.items()))
-
         data = np.zeros((len(leaves), len(leaves)))
         for i, n1 in enumerate(leaves):
             for j, n2 in enumerate(leaves):
@@ -92,11 +134,10 @@ class UnrootedTree:
     @staticmethod
     def loadtxt(filename):
         edges = []
-        with open(filename, 'r') as file:
+        with open(filename, 'r', encoding="utf-8") as file:
             line = file.readline()
             while line:
-                line = line.replace('<->', ',')
-                line = line.replace(':', ',')
-                edges += [eval(line)]
+                line = line.strip().replace('<->', ':').split(':')
+                edges.append((int(line[0]), int(line[1]), float(line[2])))
                 line = file.readline()
         return UnrootedTree(*edges)
