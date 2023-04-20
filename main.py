@@ -3,7 +3,7 @@ from distance_between_leaves import *
 
 
 def main():
-    print(UnrootedTree.loadtxt('resources/edges_01.txt'))
+    # print(UnrootedTree.loadtxt('resources/edges_01.txt'))
 
     D = DistanceMatrix.loadtxt('resources/distances_02.txt')
     print(D.neighbour_joining())
